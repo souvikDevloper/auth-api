@@ -1,0 +1,25 @@
+{
+  "name": "auth-api",
+  "version": "1.0.0",
+  "description": "A simple authentication API using Node.js, Express, JWT, and bcrypt.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "authentication",
+    "API",
+    "Node.js",
+    "Express",
+    "JWT",
+    "bcrypt"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "body-parser": "^1.20.2",
+    "express": "^4.18.4",
+    "jsonwebtoken": "^9.0.0"
+  }
+}
