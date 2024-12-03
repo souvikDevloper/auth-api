@@ -1,24 +1,22 @@
 const express = require("express");
-const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
+const { PrismaClient } = require("@prisma/client");
 
 const app = express();
-const users = []; // This will hold users temporarily (use a database in real apps)
+const prisma = new PrismaClient();
 
-const SECRET_KEY = "yourSecretKey"; // Use a secure key in production
+const PORT = 3000;
+const JWT_SECRET = "your_jwt_secret_key";
 
-// Middleware to parse incoming JSON requests
+// Middleware to parse JSON
 app.use(express.json());
 
-// Register route
+// Register Route
 app.post("/register", async (req, res) => {
-    console.log("Request Body:", req.body); // Debugging log
-
     const { username, password } = req.body;
 
-    // Check if username and password are provided
     if (!username || !password) {
-        console.error("Missing fields in request body");
         return res.status(400).json({ message: "Username and password are required" });
     }
 
@@ -26,19 +24,25 @@ app.post("/register", async (req, res) => {
         // Hash the password
         const hashedPassword = await bcrypt.hash(password, 10);
 
-        // Store the user (replace with database logic in real apps)
-        users.push({ username, password: hashedPassword });
+        // Save user to the database
+        const user = await prisma.user.create({
+            data: {
+                username,
+                password: hashedPassword,
+            },
+        });
 
-        console.log("User registered successfully:", { username });
-
-        res.status(201).json({ message: "User registered successfully" });
+        res.status(201).json({ message: "User registered successfully", user });
     } catch (error) {
-        console.error("Error during registration:", error);
-        res.status(500).json({ message: "Internal server error" });
+        if (error.code === "P2002") {
+            res.status(400).json({ message: "Username already exists" });
+        } else {
+            res.status(500).json({ message: "Internal server error", error: error.message });
+        }
     }
 });
 
-// Login route
+// Login Route
 app.post("/login", async (req, res) => {
     const { username, password } = req.body;
 
@@ -46,41 +50,50 @@ app.post("/login", async (req, res) => {
         return res.status(400).json({ message: "Username and password are required" });
     }
 
-    const user = users.find((u) => u.username === username);
-    if (!user) {
-        return res.status(404).json({ message: "User not found" });
+    try {
+        // Find user in the database
+        const user = await prisma.user.findUnique({ where: { username } });
+
+        if (!user) {
+            return res.status(401).json({ message: "Invalid username or password" });
+        }
+
+        // Compare passwords
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(401).json({ message: "Invalid username or password" });
+        }
+
+        // Generate JWT token
+        const token = jwt.sign({ id: user.id, username: user.username }, JWT_SECRET, {
+            expiresIn: "1h",
+        });
+
+        res.status(200).json({ token });
+    } catch (error) {
+        res.status(500).json({ message: "Internal server error", error: error.message });
     }
-
-    // Compare password with the hashed password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-        return res.status(401).json({ message: "Invalid credentials" });
-    }
-
-    // Generate a JWT token
-    const token = jwt.sign({ username: user.username }, SECRET_KEY, { expiresIn: "1h" });
-
-    res.status(200).json({ message: "Login successful", token });
 });
 
-// Protected route
+// Protected Route
 app.get("/protected", (req, res) => {
-    const token = req.headers.authorization?.split(" ")[1]; // Extract token from "Bearer <token>"
+    const authHeader = req.headers.authorization;
 
-    if (!token) {
-        return res.status(403).json({ message: "No token provided" });
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ message: "No token provided" });
     }
+
+    const token = authHeader.split(" ")[1];
 
     try {
-        const decoded = jwt.verify(token, SECRET_KEY);
-        res.status(200).json({ message: "Access granted", user: decoded });
+        const decoded = jwt.verify(token, JWT_SECRET);
+        res.status(200).json({ message: "Protected content accessed", user: decoded });
     } catch (error) {
-        res.status(403).json({ message: "Invalid or expired token" });
+        res.status(401).json({ message: "Invalid or expired token" });
     }
 });
 
-// Start the server
-const PORT = 3000;
+// Start the Server
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
